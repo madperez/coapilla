@@ -21,7 +21,6 @@ def get_orientation(osd:str) -> int:
             flag=False
         if 'degrees' in i:
             flag=True
-    print(angle_rotation)
     return(angle_rotation)
 
 def ocr_ife(media_image):
@@ -34,7 +33,7 @@ def ocr_ife(media_image):
       angle_to_modify=90
   elif angle_rotation==180:
       angle_to_modify=0
-  pil_image_rotated=pil_image.rotate(angle_to_modify)
+  pil_image_rotated=pil_image.rotate(angle_to_modify,expand=True)
   pil_image_rotated.show()
   d = pytesseract.image_to_string(pil_image_rotated)
   print(d)
