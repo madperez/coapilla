@@ -15,7 +15,7 @@ import logging
 import anvil.server
 from PIL import Image
 from io import BytesIO
-import ocr_ife
+from ocr_ife import ocr_ife
 
 
 IMAGES_PATH = './images'  # put your reference images in here
@@ -207,7 +207,8 @@ anvil.server.connect("VWJJR3IQJL33IXWPJLZDMBZN-TJLJJRNF2KMJQU54")
 
 @anvil.server.callable
 def analisis_ife(media_image):
-    ocr_ife(media_image)
+    estatus,nombre=ocr_ife(media_image)
+    return estatus,nombre
 
 @anvil.server.callable
 def say_hello(name):

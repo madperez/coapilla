@@ -5,20 +5,42 @@ Created on Fri Dec 25 12:49:03 2020
 
 @author: nautica
 """
+import pytesseract
+from PIL import Image
+from io import BytesIO
+import datetime
+from bs4 import BeautifulSoup
+def get_orientation(osd:str) -> int:
+    soup=BeautifulSoup(osd)
+    text=soup.get_text()
+    tokens=text.split()
+    flag=False
+    for i in tokens:
+        if flag==True:
+            angle_rotation=int(i)
+            flag=False
+        if 'degrees' in i:
+            flag=True
+    print(angle_rotation)
+    return(angle_rotation)
 
 def ocr_ife(media_image):
     
   pil_image=Image.open(BytesIO(media_image.get_bytes()))
-  d = pytesseract.image_to_string(pil_image)
+  result=pytesseract.image_to_osd(pil_image)
+  angle_rotation=get_orientation(result)
+  angle_to_modify=0
+  if angle_rotation==270:
+      angle_to_modify=90
+  elif angle_rotation==180:
+      angle_to_modify=0
+  pil_image_rotated=pil_image.rotate(angle_to_modify)
+  pil_image_rotated.show()
+  d = pytesseract.image_to_string(pil_image_rotated)
   print(d)
-  # Get verbose data including boxes, confidences, line and page numbers
   print('image_to_data \n')
   print(pytesseract.image_to_data(pil_image))
 
-  # Get information about orientation and script detection
-  print('image_to_osd \n')
-  result=pytesseract.image_to_osd(pil_image)
-  print(result)
   flagp=False
   flagm=False
   flagn=False
