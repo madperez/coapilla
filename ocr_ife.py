@@ -10,35 +10,94 @@ from PIL import Image
 from io import BytesIO
 import datetime
 from bs4 import BeautifulSoup
-def get_orientation(osd:str) -> int:
-    soup=BeautifulSoup(osd)
-    text=soup.get_text()
-    tokens=text.split()
-    flag=False
-    for i in tokens:
-        if flag==True:
-            angle_rotation=int(i)
-            flag=False
-        if 'degrees' in i:
-            flag=True
-    return(angle_rotation)
+import re
+import cv2 as cv
+import numpy
+class ife():
+    def __init__(self,image):
+        self.image=image
+        self.image_cv = numpy.array(self.image)
+        self.image_bin=self.binariza_imagen()
+        self.result=''
+        self.apellido_paterno=''
+        self.apellido_materno=''
+        self.nombre=''
+        self.ciudad=''
+        self.colonia=''
+        self.domicilio=''
+        self.curp=''
+        self.fecha_nacimiento=datetime.date.today()
+        self.clave_elector=''
+        self.anio_registro=''
+        self.seccion=''
+        self.vigencia=''
+        self.corrige_orientacion()
+        self.lee_caracteres()
+        self.busca_fecha_nacimiento()
+        self.busca_sexo()
+        self.sexo=''
+    def binariza_imagen(self):
+        # Otsu's thresholding
+        ret2,th2 = cv.threshold(self.image_cv,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU)
+        #cv.imshow('binarizacion',th2)
+        #cv.waitKey()
+        return th2
+    def corrige_orientacion(self):
+        result=pytesseract.image_to_osd(self.image)
+        soup=BeautifulSoup(result)
+        text=soup.get_text()
+        tokens=text.split()
+        flag=False
+        for i in tokens:
+            if flag==True:
+                angle_rotation=int(i)
+                flag=False
+            if 'degrees' in i:
+                flag=True
+        angle_to_modify=0
+        if angle_rotation==270:
+            angle_to_modify=90
+        elif angle_rotation==180:
+            angle_to_modify=0
+        self.image=self.image.rotate(angle_to_modify,expand=True)
+        self.image.show()
+        return(angle_rotation)
+    def lee_caracteres(self):
+        self.result=pytesseract.image_to_string(self.image_bin)
+        #print(self.result)
+    def busca_fecha_nacimiento(self):
+        regex = re.compile('../../....')
+        palabra=''
+        for word in self.result:
+            if word=='\n' or word==' ':
+                palabra=''
+            else:
+                palabra+=word
+            if re.match(regex, palabra):
+                self.fecha_nacimiento=palabra
+    def busca_sexo(self):
+        regex = re.compile('sexo')
+        palabra=''
+        flag=False
+        for word in self.result:
+            if word=='\n' or word==' ':
+                palabra=''
+            else:
+                palabra+=word.lower()
+            if palabra=='sexo':
+                flag=True
+            if flag==True and (palabra=='h' or palabra=='m'):
+                self.sexo=palabra
+                flag=False
 
 def ocr_ife(media_image):
     
-  pil_image=Image.open(BytesIO(media_image.get_bytes()))
-  result=pytesseract.image_to_osd(pil_image)
-  angle_rotation=get_orientation(result)
-  angle_to_modify=0
-  if angle_rotation==270:
-      angle_to_modify=90
-  elif angle_rotation==180:
-      angle_to_modify=0
-  pil_image_rotated=pil_image.rotate(angle_to_modify,expand=True)
-  pil_image_rotated.show()
-  d = pytesseract.image_to_string(pil_image_rotated)
+  pil_image=Image.open(BytesIO(media_image.get_bytes())).convert('L')
+  miife=ife(pil_image)
+  #miife.corrige_orientacion()
+  #miife.lee_caracteres()
+  d = miife.result
   print(d)
-  print('image_to_data \n')
-  print(pytesseract.image_to_data(pil_image))
 
   flagp=False
   flagm=False
@@ -127,7 +186,6 @@ def ocr_ife(media_image):
         palabra=''
       if 'elector' in i.lower():
         flag_elector=True
-        print('elector encontrado',palabra)
         for palabras in tokens:
           print('--',palabras)
           if 'elector' not in palabras.lower():
