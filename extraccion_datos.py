@@ -63,7 +63,7 @@ def deskew(image):
 def match_template(image, template):
     return cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED) 
 
-image = cv2.imread('./ife/ife1.jpg')
+image = cv2.imread('./ife/PRPTMD71062407H800.png')
 
 gray = get_grayscale(image)
 thresh = thresholding(gray)
@@ -81,9 +81,9 @@ d = pytesseract.image_to_data(img, output_type=Output.DICT)
 print(d.keys())
 n_boxes = len(d['text'])
 for i in d['text']:
-    #print(i)
     pass
 for i in range(n_boxes):
+    print(d['text'][i],d['conf'][i])
     if int(d['conf'][i]) > 70:
         (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
         img = cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
