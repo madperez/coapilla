@@ -24,18 +24,58 @@ class ife():
         self.result_gray=pytesseract.image_to_string(self.image)
         self.result_bin=pytesseract.image_to_string(self.image_bin)
         self.result_dict = pytesseract.image_to_data(self.image, output_type=Output.DICT)
-        self.ciudad=''
-        self.colonia=''
-        self.domicilio=''
         self.curp=''
-        self.fecha_nacimiento=datetime.date.today()
         self.clave_elector=''
         self.anio_registro=''
         self.seccion=''
         self.vigencia=''
-        self.busca_fecha_nacimiento()
-        self.sexo=self.busca_sexo()
+        self.identidad={}
+        self.identidad['fecha_nacimiento']=self.busca_fecha_nacimiento()
+        self.identidad['sexo']=self.busca_sexo()
         self.apellido_paterno,self.apellido_materno,self.nombre=self.busca_nombre()
+        self.identidad['nombre']={'nombre':self.nombre,'paterno':self.apellido_paterno,'materno':self.apellido_materno}
+        self.dict_documento=self.crea_lineas()
+        self.identidad['direccion']=self.busca_direccion()
+        self.identidad['clave_elector']=self.busca_clave_elector()
+        self.identidad['curp'],tmp=self.busca_curp()
+    def busca_curp(self):
+        # modelo 1 en un renglon solo la curp
+        # modelo 2 curp y año de registro en el mismo renglon
+        # modelo 3 leyendas curp y año de registro en un renglon y los datos en el siguiente renglon
+        homoclave=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")
+        homoclave_curp=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")+self.identidad['sexo']
+        print('buscando homoclave:--',homoclave,homoclave_curp)
+        curp=''
+        clave_elector=''
+        rango=len(self.result_dict['text'])
+        for i in range(rango):
+            palabra=self.result_dict['text'][i].lower()
+            if len(palabra)==18:
+                print(palabra,palabra[1])
+                if palabra[1]=="a" or palabra[1]=="e" or palabra[1]=="i" or palabra[1]=="o" or palabra[1]=="u":
+                    print('curp detectada')
+                    curp=palabra
+                else:
+                    clave_elector=palabra
+        print('curp, clave elector',curp,clave_elector)
+        return curp,clave_elector
+    def busca_clave_elector(self):
+        documento=self.dict_documento
+        clave_elector=''
+        for keys,values in documento.items():
+            print(keys,values)
+            if 'elector' in values:
+                clave_elector=values.split()[-1]
+                if len(clave_elector)<18:
+                    lista=values.split()[-2:]
+                    clave_elector=''
+                    for i in lista:
+                        clave_elector+=i
+                    
+        return clave_elector
+    def datos_ife(self):
+        print('datos obtenidos\n')
+        print(self.identidad)
     def binariza_imagen(self):
         # Otsu's thresholding
         print('binarizando')
@@ -66,13 +106,15 @@ class ife():
         self.image.show()
         return(angle_rotation)
     def busca_fecha_nacimiento(self):
+        fecha_nacimiento=datetime.date.today()
         regex = re.compile('../../....')
         qty_data=len(self.result_dict['text'])
         for i in range(qty_data):
             palabra=self.result_dict['text'][i]
             if re.match(regex,palabra):
                 date_time_obj=datetime.datetime.strptime(palabra+' 7:40AM','%d/%m/%Y %I:%M%p')
-                self.fecha_nacimiento=date_time_obj.date()
+                fecha_nacimiento=date_time_obj.date()
+        return fecha_nacimiento
 
     def busca_sexo(self):
         qty_data=len(self.result_dict['text'])
@@ -116,6 +158,24 @@ class ife():
                 left_nombre=self.result_dict['left'][i]
         return paterno,materno,nombre
 
+    def crea_lineas(self):
+        # transforma la cadena de caracteres con lineas e indicadores de referencia al inicio
+        top_direccion=0
+        qty_data=len(self.result_dict['text'])
+        # construyendo lineas
+        frase=''
+        documento={}
+        lista_top=[]
+        for i in range(qty_data):
+            if self.result_dict['top'][i]>=top_direccion-10 and self.result_dict['top'][i]<=top_direccion+10:
+                frase+=' '+self.result_dict['text'][i].lower()
+                documento[top_direccion]=frase
+            else:
+                frase=''
+                lista_top.append(top_direccion)
+                top_direccion=self.result_dict['top'][i]
+        return documento
+
     def busca_direccion(self):
         # estos datos se encuentran cerca de la etiqueta direccion, se usa su coordenada para buscarlo
         qty_data=len(self.result_dict['text'])
@@ -128,39 +188,54 @@ class ife():
         municipio=''
         codigo_postal=''
         estado=''
+        top_direccion=0
+        # construyendo lineas
+        documento=self.dict_documento
+        # buscando datos
         for i in range(qty_data):
             palabra=self.result_dict['text'][i].lower()
             if flag==True:
                 if self.result_dict['left'][i]>left_nombre-10 and self.result_dict['left'][i]<left_nombre+10:
                     if flag_municipio==False and flag_colonia==True and palabra!='':
-                        municipio+=self.result_dict['text'][i]
-                        if self.result_dict['top'][i]>=top_direccion-10 and self.result_dict['top'][i]<=top_direccion-10:
-                            pass
-                        else:
-                            print('municipio: ',municipio)
-                            flag_municipio=True
+                        # busca el mas cercano en caso de que no encuentre el indice
+                        top_referencia=self.result_dict['top'][i]
+                        diferencia=1000
+                        key_cercano=top_referencia
+                        for keys,value in documento.items():
+                            error=abs(keys-top_referencia)
+                            if error<diferencia:
+                                diferencia=error
+                                key_cercano=keys
+                        municipio_estado=documento[key_cercano].split()
+                        estado=municipio_estado[-1]
+                        municipio_estado.pop()
+                        for i in municipio_estado:
+                            municipio+=i+' '
+                        flag_municipio=True
                     if flag_colonia==False and flag_direccion==True and palabra!='':
-                        colonia+=self.result_dict['text'][i]
-                        if self.result_dict['top'][i]>=top_direccion-10 and self.result_dict['top'][i]<=top_direccion-10:
-                            pass
-                        else:
-                            print('colonia: ',colonia)
-                            flag_colonia=True
-                            top_direccion=self.result_dict['top'][i]
+                        # busca el mas cercano en caso de que no encuentre el indice
+                        top_referencia=self.result_dict['top'][i]
+                        diferencia=1000
+                        key_cercano=top_referencia
+                        for keys,value in documento.items():
+                            error=abs(keys-top_referencia)
+                            if error<diferencia:
+                                diferencia=error
+                                key_cercano=keys
+                        colonia_cp=documento[key_cercano].split()
+                        codigo_postal=colonia_cp[-1]
+                        colonia_cp.pop()
+                        for i in colonia_cp:
+                            colonia+=i+' '
+                        flag_colonia=True
                     if flag_direccion==False and palabra!='':
-                        direccion+=self.result_dict['text'][i]
-                        if self.result_dict['top'][i]>=top_direccion-10 and self.result_dict['top'][i]<=top_direccion-10:
-                            pass
-                        else:
-                            print('direccion: ',direccion)
-                            flag_direccion=True
-                            top_direccion=self.result_dict['top'][i]
+                        print(documento[self.result_dict['top'][i]])
+                        direccion=documento[self.result_dict['top'][i]]
+                        flag_direccion=True
             if palabra=='domicilio':
                 flag=True
-                print('domicilio detectado', self.result_dict['left'][i],self.result_dict['top'][i])
                 left_nombre=self.result_dict['left'][i]
-                top_direccion=self.result_dict['top'][i]
-        return direccion
+        return {'direccion':direccion,'colonia':colonia,'cp':codigo_postal,'municipio':municipio,'estado':estado}
 
 def ocr_ife(media_image):
     
@@ -169,98 +244,13 @@ def ocr_ife(media_image):
   #miife.corrige_orientacion()
   #miife.lee_caracteres()
   print(miife.result_bin)
-  d = miife.result_gray
-  print(d)
-
-  flagp=False
-  flagm=False
-  flagn=False
-  flag_ciudad=False
-  flag_colonia=False
-  flag_domicilio=False
-  flag_curp=False
-  flag_nacimiento=False
-  flag_elector=False
-  paterno=''
-  materno=''
-  nombre=''
-  direccion=''
-  colonia=''
-  ciudad=''
-  clave_elector=''
-  palabra=''
-  curp=''
-  ano_registro=''
-  fecha_nacimiento=datetime.date.today()
-  seccion=''
-  vigencia=''
-  cp=''
-  for word in d:
-    #se juntan las letras
-    if word=='\n':
-      flag_start=True
-    else:
-      palabra+=word
-      flag_start=False
-    if flag_start==True:
-      print(palabra)
-      i=palabra
-      soup=BeautifulSoup(i)
-      text=soup.get_text()
-      tokens=text.split()
-      if flag_ciudad==True:
-        if len(i)>1:
-            ciudad=i
-            flag_ciudad=False
-            palabra=''
-      if flag_colonia==True:
-        if len(i)>1:
-          largo=len(tokens)
-          for palabras in range(largo-1):
-            colonia+=tokens[palabras]+' '
-          cp=tokens[largo-1]
-          flag_colonia=False
-          flag_ciudad=True
-          palabra=''
-      if flag_domicilio==True:
-        if len(i)>1:
-            direccion=i
-            flag_domicilio=False
-            flag_colonia=True
-            palabra=''
-      if flag_curp==True:
-        if len(i)>1:
-            curp=tokens[0]
-            ano_registro=tokens[1]
-            flag_curp=False
-            palabra=''
-      if 'domicilio' in i.lower():
-        flag_domicilio=True
-        palabra=''
-      if 'elector' in i.lower():
-        flag_elector=True
-        for palabras in tokens:
-          print('--',palabras)
-          if 'elector' not in palabras.lower():
-             clave_elector=palabras
-        palabra=''
-      if 'vigencia' in i.lower():
-        flag_nacimiento=True
-        palabra=''
-      if 'registro' in i.lower():
-        flag_curp=True
-        palabra=''
-  print('resultado ',miife.fecha_nacimiento,miife.sexo)
-  print('nombre',miife.apellido_paterno,miife.apellido_materno,miife.nombre)
-  print('direccion',direccion,colonia,ciudad)
-  print(clave_elector)
-  print(curp,ano_registro)
-  print(fecha_nacimiento,seccion,vigencia)
-  if len(clave_elector)>1:
-    app_tables.dbclientes.add_row(anio_registro=ano_registro,ciudad=ciudad,clave_elector=clave_elector,colonia=colonia,curp=curp,direccion=direccion,
-                                  fecha_nacimiento=date_time_obj.date(),materno=materno,nombre=nombre,paterno=paterno,seccion=seccion,vigencia=vigencia,ife=media_image,codigo_postal=cp)
-    status=True
-    anvil.server.call('save_ife',media_image,clave_elector)
-  else:
-    status=False
-  return status, paterno+materno+nombre
+  miife.datos_ife()
+  #if len(miife.identidad['clave_elector'])>1:
+    #app_tables.dbclientes.add_row(anio_registro=ano_registro,ciudad=ciudad,clave_elector=clave_elector,colonia=colonia,curp=curp,direccion=direccion,
+     #                             fecha_nacimiento=date_time_obj.date(),materno=materno,nombre=nombre,paterno=paterno,seccion=seccion,vigencia=vigencia,ife=media_image,codigo_postal=cp)
+   # status=True
+    #anvil.server.call('save_ife',media_image,clave_elector)
+  #else:
+   # status=False
+  parameters=[]
+  return True,parameters.append(miife.identidad)
