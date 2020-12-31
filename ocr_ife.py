@@ -15,6 +15,8 @@ from bs4 import BeautifulSoup
 import re
 import cv2 as cv
 import numpy
+from difflib import get_close_matches
+
 class ife():
     def __init__(self,image):
         self.image=image
@@ -36,6 +38,45 @@ class ife():
         self.identidad['direccion'],self.identidad['colonia'],self.identidad['codigo_postal'],self.identidad['municipio'],self.identidad['estado']=self.busca_direccion()
         self.identidad['clave_elector']=self.busca_clave_elector()
         self.identidad['curp'],tmp=self.busca_curp()
+        self.identidad['folio']=self.busca_folio()
+        self.identidad['estado_id']=self.busca_estado()
+        self.identidad['anio_registro']=self.busca_registro()
+    def busca_registro(self):
+        # se busca algo que suene similar por si falla el ocr
+        # el año a veces viene en otro renglon, False
+        # el año se pega con el 01, False
+        registro=''
+        for i,value in self.dict_documento.items():
+            similar_estado=get_close_matches('registro',value.split())
+            if len(similar_estado)>0:
+                print(similar_estado)
+                words=value.split()
+                for word in words:
+                    if len(word)==4:
+                        registro=word
+        return registro
+    def busca_estado(self):
+        estado=''
+        for i,value in self.dict_documento.items():
+            similar_estado=get_close_matches('estado',value.split())
+            print(len(similar_estado))
+            if len(similar_estado)>0:
+                words=value.split()
+                for word in words:
+                    if len(word)==2:
+                        estado=word
+        return estado
+    def busca_folio(self):
+        # el folio tiene 13 caracteres de largo
+        # todos son numeros
+        folio=''
+        rango=len(self.result_dict['text'])
+        for i in range(rango):
+            palabra=self.result_dict['text'][i].lower()
+            if len(palabra)==13:
+                if palabra.isdigit():
+                    folio=palabra
+        return folio
     def busca_curp(self):
         # modelo 1 en un renglon solo la curp
         # modelo 2 curp y año de registro en el mismo renglon
@@ -53,7 +94,6 @@ class ife():
         for i in range(rango):
             palabra=self.result_dict['text'][i].lower()
             if len(palabra)==18:
-                print(palabra,palabra[1],palabra[4:10])
                 if palabra[1]=="a" or palabra[1]=="e" or palabra[1]=="i" or palabra[1]=="o" or palabra[1]=="u":
                     curp=palabra
                     sexo=palabra[10]
@@ -68,7 +108,6 @@ class ife():
                     else:
                         self.identidad['fecha_nacimiento']=palabra[8:10]+'/'+palabra[6:8]+'/19'+palabra[4:6]
                 
-        print('curp, clave elector',curp,clave_elector)
         return curp,clave_elector
     def busca_clave_elector(self):
         documento=self.dict_documento
