@@ -24,39 +24,50 @@ class ife():
         self.result_gray=pytesseract.image_to_string(self.image)
         self.result_bin=pytesseract.image_to_string(self.image_bin)
         self.result_dict = pytesseract.image_to_data(self.image, output_type=Output.DICT)
-        self.curp=''
-        self.clave_elector=''
         self.anio_registro=''
         self.seccion=''
         self.vigencia=''
         self.identidad={}
         self.identidad['fecha_nacimiento']=self.busca_fecha_nacimiento()
         self.identidad['sexo']=self.busca_sexo()
-        self.apellido_paterno,self.apellido_materno,self.nombre=self.busca_nombre()
-        self.identidad['nombre']={'nombre':self.nombre,'paterno':self.apellido_paterno,'materno':self.apellido_materno}
+        self.identidad['paterno'],self.identidad['materno'],self.identidad['nombre']=self.busca_nombre()
+        #self.identidad['nombre']={'nombre':self.nombre,'paterno':self.apellido_paterno,'materno':self.apellido_materno}
         self.dict_documento=self.crea_lineas()
-        self.identidad['direccion']=self.busca_direccion()
+        self.identidad['direccion'],self.identidad['colonia'],self.identidad['codigo_postal'],self.identidad['municipio'],self.identidad['estado']=self.busca_direccion()
         self.identidad['clave_elector']=self.busca_clave_elector()
         self.identidad['curp'],tmp=self.busca_curp()
     def busca_curp(self):
         # modelo 1 en un renglon solo la curp
         # modelo 2 curp y año de registro en el mismo renglon
         # modelo 3 leyendas curp y año de registro en un renglon y los datos en el siguiente renglon
-        homoclave=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")
-        homoclave_curp=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")+self.identidad['sexo']
-        print('buscando homoclave:--',homoclave,homoclave_curp)
+        # 29/12/20 se busca por el tamaño de la cadena y la regla de la creación de la curp
+        # se puede aprovechar la clave de elector obtenida aqui, pero hay que validar que este correcta
+        # el sexo se puede obtener de la curp
+        # no todas las ifes tienen el campo fecha de nacimiento
+        #date_time_obj=datetime.datetime.strptime(self.identidad['fecha_nacimiento']+' 7:40AM','%d/%m/%Y %I:%M%p')
+        #homoclave=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")
+        #homoclave_curp=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")+self.identidad['sexo']
         curp=''
         clave_elector=''
         rango=len(self.result_dict['text'])
         for i in range(rango):
             palabra=self.result_dict['text'][i].lower()
             if len(palabra)==18:
-                print(palabra,palabra[1])
+                print(palabra,palabra[1],palabra[4:10])
                 if palabra[1]=="a" or palabra[1]=="e" or palabra[1]=="i" or palabra[1]=="o" or palabra[1]=="u":
-                    print('curp detectada')
                     curp=palabra
+                    sexo=palabra[10]
+                    if sexo=='h' or sexo=='m':
+                        self.identidad['sexo']=sexo
                 else:
                     clave_elector=palabra
+                if self.identidad['fecha_nacimiento']=='':
+                    anio=int(palabra[4:6])
+                    if anio<=21:
+                        self.identidad['fecha_nacimiento']=palabra[8:10]+'/'+palabra[6:8]+'/20'+palabra[4:6]
+                    else:
+                        self.identidad['fecha_nacimiento']=palabra[8:10]+'/'+palabra[6:8]+'/19'+palabra[4:6]
+                
         print('curp, clave elector',curp,clave_elector)
         return curp,clave_elector
     def busca_clave_elector(self):
@@ -106,14 +117,14 @@ class ife():
         self.image.show()
         return(angle_rotation)
     def busca_fecha_nacimiento(self):
-        fecha_nacimiento=datetime.date.today()
+        fecha_nacimiento=''
         regex = re.compile('../../....')
         qty_data=len(self.result_dict['text'])
         for i in range(qty_data):
             palabra=self.result_dict['text'][i]
             if re.match(regex,palabra):
                 date_time_obj=datetime.datetime.strptime(palabra+' 7:40AM','%d/%m/%Y %I:%M%p')
-                fecha_nacimiento=date_time_obj.date()
+                fecha_nacimiento=palabra
         return fecha_nacimiento
 
     def busca_sexo(self):
@@ -232,10 +243,10 @@ class ife():
                         print(documento[self.result_dict['top'][i]])
                         direccion=documento[self.result_dict['top'][i]]
                         flag_direccion=True
-            if palabra=='domicilio':
+            if 'domicilio' in palabra:
                 flag=True
                 left_nombre=self.result_dict['left'][i]
-        return {'direccion':direccion,'colonia':colonia,'cp':codigo_postal,'municipio':municipio,'estado':estado}
+        return direccion,colonia,codigo_postal,municipio,estado
 
 def ocr_ife(media_image):
     
@@ -253,4 +264,5 @@ def ocr_ife(media_image):
   #else:
    # status=False
   parameters=[]
-  return True,parameters.append(miife.identidad)
+  parameters.append(miife.identidad)
+  return parameters
