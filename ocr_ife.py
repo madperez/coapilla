@@ -34,7 +34,7 @@ class ife():
         self.identidad['sexo']=self.busca_sexo()
         self.identidad['paterno'],self.identidad['materno'],self.identidad['nombre']=self.busca_nombre()
         #self.identidad['nombre']={'nombre':self.nombre,'paterno':self.apellido_paterno,'materno':self.apellido_materno}
-        self.dict_documento=self.crea_lineas()
+        self.dict_documento,self.list_relaciones=self.crea_lineas()
         self.identidad['direccion'],self.identidad['colonia'],self.identidad['codigo_postal'],self.identidad['municipio'],self.identidad['estado']=self.busca_direccion()
         self.identidad['clave_elector']=self.busca_clave_elector()
         self.identidad['curp'],tmp=self.busca_curp()
@@ -46,14 +46,23 @@ class ife():
         # el año a veces viene en otro renglon, False
         # el año se pega con el 01, False
         registro=''
+        flag=False
         for i,value in self.dict_documento.items():
             similar_estado=get_close_matches('registro',value.split())
             if len(similar_estado)>0:
-                print(similar_estado)
                 words=value.split()
                 for word in words:
-                    if len(word)==4:
+                    if len(word)==4 and word.isdigit():
+                        flag=True
                         registro=word
+        # lo busca en el renglon de abajo
+        if flag==False:
+            for relaciones in self.list_relaciones:
+                similar_ano=get_close_matches('ano',relaciones[0])
+                print(relaciones[0],similar_ano)
+                if len(similar_ano)>0:
+                    registro=relaciones[1]
+        print(registro)
         return registro
     def busca_estado(self):
         estado=''
@@ -187,8 +196,6 @@ class ife():
         paterno=''
         materno=''
         nombre=''
-        for keys,value in self.result_dict.items():
-            print(keys,value)
         for i in range(qty_data):
             palabra=self.result_dict['text'][i].lower()
             if flag==True:
@@ -210,21 +217,40 @@ class ife():
 
     def crea_lineas(self):
         # transforma la cadena de caracteres con lineas e indicadores de referencia al inicio
+        # 01/01/2021 se establece la relación entre palabras de lineas consecutivas
         top_direccion=0
         qty_data=len(self.result_dict['text'])
         # construyendo lineas
         frase=''
         documento={}
-        lista_top=[]
+        linea_anterior={}
+        linea_actual={}
+        relaciones=[]
+        palabra_anterior=''
+        for i in self.result_dict.items():
+            print(i)
         for i in range(qty_data):
+            #checa si hay un cambio de linea
             if self.result_dict['top'][i]>=top_direccion-10 and self.result_dict['top'][i]<=top_direccion+10:
-                frase+=' '+self.result_dict['text'][i].lower()
+                palabra=self.result_dict['text'][i].lower()
+                frase+=' '+palabra
+                if len(palabra)>0:
+                    linea_actual[self.result_dict['left'][i]]=palabra
+                    for keys,values in linea_anterior.items():
+                        print(keys,values)
+                        if keys>=self.result_dict['left'][i]-10 and keys<=self.result_dict['left'][i]+10:
+                            relaciones.append([values,palabra,palabra_anterior])
+                    palabra_anterior=palabra
                 documento[top_direccion]=frase
             else:
+                print(linea_anterior,linea_actual)
+                linea_anterior=linea_actual
+                linea_actual={}
                 frase=''
-                lista_top.append(top_direccion)
                 top_direccion=self.result_dict['top'][i]
-        return documento
+        print(documento)
+        print(relaciones)
+        return documento,relaciones
 
     def busca_direccion(self):
         # estos datos se encuentran cerca de la etiqueta direccion, se usa su coordenada para buscarlo
@@ -304,4 +330,4 @@ def ocr_ife(media_image):
    # status=False
   parameters=[]
   parameters.append(miife.identidad)
-  return parameters
+  return miife.identidad
