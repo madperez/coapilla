@@ -20,8 +20,8 @@ from difflib import get_close_matches
 class ife():
     def __init__(self,image):
         self.image=image
-        self.corrige_orientacion()
         self.image_cv = numpy.array(self.image)
+        self.corrige_orientacion()
         self.image_bin=self.binariza_imagen()
         self.result_gray=pytesseract.image_to_string(self.image)
         self.result_bin=pytesseract.image_to_string(self.image_bin)
@@ -41,10 +41,16 @@ class ife():
         self.identidad['folio']=self.busca_folio()
         self.identidad['estado_id']=self.busca_estado()
         self.identidad['anio_registro']=self.busca_registro()
+        self.identidad['municipio_id']=self.busca_municipio()
+        self.identidad['localidad']=self.busca_localidad()
+        self.identidad['seccion']=self.busca_seccion()
+        self.identidad['emision']=self.busca_emision()
+        self.identidad['vigencia']=self.busca_vigencia()
     def busca_registro(self):
         # se busca algo que suene similar por si falla el ocr
         # el año a veces viene en otro renglon, False
         # el año se pega con el 01, False
+        # la palabra año se pega con la palabra de
         registro=''
         flag=False
         for i,value in self.dict_documento.items():
@@ -59,16 +65,112 @@ class ife():
         if flag==False:
             for relaciones in self.list_relaciones:
                 similar_ano=get_close_matches('ano',relaciones[0])
-                print(relaciones[0],similar_ano)
                 if len(similar_ano)>0:
                     registro=relaciones[1]
         print(registro)
         return registro
+    def busca_municipio(self):
+        municipio=''
+        regex = re.compile('munici')
+        flag=False
+        for i,value in self.dict_documento.items():
+            for j in value.split():
+                similar_municipio=get_close_matches('municipio',j)
+                if flag==True:
+                    municipio=j
+                    flag=False
+                if re.match(regex,j):
+                    flag=True
+                if len(similar_municipio)>0:
+                    flag=True
+        return municipio
+    def busca_vigencia(self):
+        # hay tres posibilidades, no hay, solo vigencia o vigencia hasta
+        # se buscaran 4 digitos y se buscará el mayor
+        anio_actual=datetime.date.today().strftime("%Y")
+        municipio=''
+        regex = re.compile('vi.encia')
+        flag=False
+        # busca abajo
+        for i in self.list_relaciones:
+            similar_localidad=get_close_matches('vigencia',i)
+            if len(similar_localidad)>0:
+                municipio=i[1]
+        # busca a la derecha
+        for i,value in self.dict_documento.items():
+            for j in value.split():
+                if len(j)==4:
+                    if j.isdigit():
+                        if j>anio_actual:
+                            municipio=j
+                similar_municipio=get_close_matches('vigencia',j)
+                similar_vigencia=get_close_matches('hasta',j)
+                if flag==True:
+                    if j.isdigit():
+                        municipio=j
+                    flag=False
+                if re.match(regex,j):
+                    flag=True
+                if len(similar_municipio)>0 or len(similar_vigencia)>0:
+                    flag=True
+        return municipio
+    def busca_emision(self):
+        municipio=''
+        regex = re.compile('emision')
+        flag=False
+        for i,value in self.dict_documento.items():
+            for j in value.split():
+                similar_municipio=get_close_matches('emision',j)
+                if flag==True:
+                    municipio=j
+                    flag=False
+                if re.match(regex,j):
+                    flag=True
+                if len(similar_municipio)>0:
+                    flag=True
+        return municipio
+    def busca_localidad(self):
+        localidad=''
+        regex = re.compile('.oca...ad')
+        flag=False
+        for i,value in self.dict_documento.items():
+            for j in value.split():
+                similar_localidad=get_close_matches('localidad',j)
+                if flag==True:
+                    localidad=j
+                    flag=False
+                if re.match(regex,j):
+                    flag=True
+                if len(similar_localidad)>0:
+                    flag=True
+        return localidad
+    def busca_seccion(self):
+        # puede estar a la derecha o abajo de la palabra seccion
+        localidad=''
+        regex = re.compile('seccion')
+        flag=False
+        # busca abajo
+        for i in self.list_relaciones:
+            similar_localidad=get_close_matches('seccion',i)
+            if len(similar_localidad)>0:
+                localidad=i[1]
+        # busca a la derecha
+        for i,value in self.dict_documento.items():
+            for j in value.split():
+                similar_localidad=get_close_matches('seccion',j)
+                if flag==True:
+                    if j.isdigit():
+                        localidad=j
+                    flag=False
+                if re.match(regex,j):
+                    flag=True
+                if len(similar_localidad)>0:
+                    flag=True
+        return localidad
     def busca_estado(self):
         estado=''
         for i,value in self.dict_documento.items():
             similar_estado=get_close_matches('estado',value.split())
-            print(len(similar_estado))
             if len(similar_estado)>0:
                 words=value.split()
                 for word in words:
@@ -94,9 +196,6 @@ class ife():
         # se puede aprovechar la clave de elector obtenida aqui, pero hay que validar que este correcta
         # el sexo se puede obtener de la curp
         # no todas las ifes tienen el campo fecha de nacimiento
-        #date_time_obj=datetime.datetime.strptime(self.identidad['fecha_nacimiento']+' 7:40AM','%d/%m/%Y %I:%M%p')
-        #homoclave=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")
-        #homoclave_curp=self.identidad['fecha_nacimiento'].strftime("%Y")[-2:]+self.identidad['fecha_nacimiento'].strftime("%m")+self.identidad['fecha_nacimiento'].strftime("%d")+self.identidad['sexo']
         curp=''
         clave_elector=''
         rango=len(self.result_dict['text'])
@@ -145,7 +244,22 @@ class ife():
         return th2
     def corrige_orientacion(self):
         print('orientando')
-        result=pytesseract.image_to_osd(self.image)
+        try:
+            result=pytesseract.image_to_osd(self.image)
+        except:
+            scale_percent = 30
+            #calculate the 50 percent of original dimensions
+            print(self.image_cv.shape)
+            width = int(self.image_cv.shape[1] * scale_percent / 100)
+            height = int(self.image_cv.shape[0] * scale_percent / 100)
+            # dsize
+            dsize = (width, height)
+            print(dsize)
+            resize_img = cv.resize(self.image_cv, dsize, interpolation=cv.INTER_CUBIC)
+            print(resize_img.shape)
+            self.image_cv=resize_img.copy()
+            print(self.image_cv.shape)
+            result=pytesseract.image_to_osd(self.image_cv)
         soup=BeautifulSoup(result)
         text=soup.get_text()
         tokens=text.split()
@@ -227,8 +341,6 @@ class ife():
         linea_actual={}
         relaciones=[]
         palabra_anterior=''
-        for i in self.result_dict.items():
-            print(i)
         for i in range(qty_data):
             #checa si hay un cambio de linea
             if self.result_dict['top'][i]>=top_direccion-10 and self.result_dict['top'][i]<=top_direccion+10:
@@ -237,7 +349,6 @@ class ife():
                 if len(palabra)>0:
                     linea_actual[self.result_dict['left'][i]]=palabra
                     for keys,values in linea_anterior.items():
-                        print(keys,values)
                         if keys>=self.result_dict['left'][i]-10 and keys<=self.result_dict['left'][i]+10:
                             relaciones.append([values,palabra,palabra_anterior])
                     palabra_anterior=palabra

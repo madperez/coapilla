@@ -208,6 +208,7 @@ anvil.server.connect("VWJJR3IQJL33IXWPJLZDMBZN-TJLJJRNF2KMJQU54")
 @anvil.server.callable
 def analisis_ife(media_image):
     nombre=ocr_ife(media_image)
+    #print(nombre.__dict__)
     return nombre
 
 @anvil.server.callable
