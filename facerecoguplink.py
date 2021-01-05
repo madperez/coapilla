@@ -207,6 +207,23 @@ anvil.server.connect("VWJJR3IQJL33IXWPJLZDMBZN-TJLJJRNF2KMJQU54")
 
 @anvil.server.callable
 def analisis_ife(media_image):
+    pil_image=Image.open(BytesIO(media_image.get_bytes())).convert('RGB')
+    image_cv = np.array(pil_image)
+    # Convert RGB to BGR 
+    open_cv_image = image_cv[:, :, ::-1].copy() 
+    gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
+    face_locations,face_encodings=get_face_embeddings_from_image(open_cv_image)
+    print('locations',face_locations)
+    for location,face_encoding in zip(face_locations,face_encodings):
+        print(location)
+        paint_detected_face_on_image(open_cv_image,location,'yo mero')
+    cv2.imwrite('imfaces.jpg',open_cv_image)
+    kernel = np.array([[-1,-1,-1], [-1, 9,-1],[-1,-1,-1]])
+    sharpened = cv2.filter2D(gray, -1, kernel)
+    cv2.imwrite('image_sharp.jpg',sharpened)
+
+    cv2.waitKey(5)
+    
     nombre=ocr_ife(media_image)
     #print(nombre.__dict__)
     return nombre

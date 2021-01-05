@@ -19,33 +19,38 @@ from difflib import get_close_matches
 
 class ife():
     def __init__(self,image):
+        self.image_cv = numpy.array(image)
+        kernel = numpy.array([[-1,-1,-1], [-1, 9,-1],[-1,-1,-1]])
+        sharpened = cv.filter2D(self.image_cv, -1, kernel)
         self.image=image
-        self.image_cv = numpy.array(self.image)
-        self.corrige_orientacion()
         self.image_bin=self.binariza_imagen()
-        self.result_gray=pytesseract.image_to_string(self.image)
-        self.result_bin=pytesseract.image_to_string(self.image_bin)
-        self.result_dict = pytesseract.image_to_data(self.image, output_type=Output.DICT)
-        self.anio_registro=''
-        self.seccion=''
-        self.vigencia=''
         self.identidad={}
-        self.identidad['fecha_nacimiento']=self.busca_fecha_nacimiento()
-        self.identidad['sexo']=self.busca_sexo()
-        self.identidad['paterno'],self.identidad['materno'],self.identidad['nombre']=self.busca_nombre()
-        #self.identidad['nombre']={'nombre':self.nombre,'paterno':self.apellido_paterno,'materno':self.apellido_materno}
-        self.dict_documento,self.list_relaciones=self.crea_lineas()
-        self.identidad['direccion'],self.identidad['colonia'],self.identidad['codigo_postal'],self.identidad['municipio'],self.identidad['estado']=self.busca_direccion()
-        self.identidad['clave_elector']=self.busca_clave_elector()
-        self.identidad['curp'],tmp=self.busca_curp()
-        self.identidad['folio']=self.busca_folio()
-        self.identidad['estado_id']=self.busca_estado()
-        self.identidad['anio_registro']=self.busca_registro()
-        self.identidad['municipio_id']=self.busca_municipio()
-        self.identidad['localidad']=self.busca_localidad()
-        self.identidad['seccion']=self.busca_seccion()
-        self.identidad['emision']=self.busca_emision()
-        self.identidad['vigencia']=self.busca_vigencia()
+    
+        if self.corrige_orientacion():
+            self.result_gray=pytesseract.image_to_string(self.image)
+            self.result_bin=pytesseract.image_to_string(self.image_bin)
+            self.result_dict = pytesseract.image_to_data(self.image, output_type=Output.DICT)
+            self.anio_registro=''
+            self.seccion=''
+            self.vigencia=''
+            self.identidad['fecha_nacimiento']=self.busca_fecha_nacimiento()
+            self.identidad['sexo']=self.busca_sexo()
+            self.identidad['paterno'],self.identidad['materno'],self.identidad['nombre']=self.busca_nombre()
+            #self.identidad['nombre']={'nombre':self.nombre,'paterno':self.apellido_paterno,'materno':self.apellido_materno}
+            self.dict_documento,self.list_relaciones=self.crea_lineas()
+            self.identidad['direccion'],self.identidad['colonia'],self.identidad['codigo_postal'],self.identidad['municipio'],self.identidad['estado']=self.busca_direccion()
+            self.identidad['clave_elector']=self.busca_clave_elector()
+            self.identidad['curp'],tmp=self.busca_curp()
+            self.identidad['folio']=self.busca_folio()
+            self.identidad['estado_id']=self.busca_estado()
+            self.identidad['anio_registro']=self.busca_registro()
+            self.identidad['municipio_id']=self.busca_municipio()
+            self.identidad['localidad']=self.busca_localidad()
+            self.identidad['seccion']=self.busca_seccion()
+            self.identidad['emision']=self.busca_emision()
+            self.identidad['vigencia']=self.busca_vigencia()
+        else:
+            self.identidad['nombre']='error'
     def busca_registro(self):
         # se busca algo que suene similar por si falla el ocr
         # el año a veces viene en otro renglon, False
@@ -153,7 +158,8 @@ class ife():
         for i in self.list_relaciones:
             similar_localidad=get_close_matches('seccion',i)
             if len(similar_localidad)>0:
-                localidad=i[1]
+                if i[1].isdigit():
+                    localidad=i[1]
         # busca a la derecha
         for i,value in self.dict_documento.items():
             for j in value.split():
@@ -243,9 +249,28 @@ class ife():
         #cv.waitKey()
         return th2
     def corrige_orientacion(self):
-        print('orientando')
+        posible_analisis=False
         try:
             result=pytesseract.image_to_osd(self.image)
+            #soup=BeautifulSoup(result)
+            #text=soup.get_text()
+            tokens=result.split()
+            flag=False
+            for i in tokens:
+                if flag==True:
+                    angle_rotation=int(i)
+                    flag=False
+                if 'degrees' in i:
+                    flag=True
+            angle_to_modify=0
+            if angle_rotation==270:
+                angle_to_modify=90
+            elif angle_rotation==180:
+                angle_to_modify=0
+            self.image=self.image.rotate(angle_to_modify,expand=True)
+            self.image.show()
+            posible_analisis=True
+            print('Angulo a corregir: ',angle_rotation)
         except:
             scale_percent = 30
             #calculate the 50 percent of original dimensions
@@ -254,30 +279,9 @@ class ife():
             height = int(self.image_cv.shape[0] * scale_percent / 100)
             # dsize
             dsize = (width, height)
-            print(dsize)
-            resize_img = cv.resize(self.image_cv, dsize, interpolation=cv.INTER_CUBIC)
-            print(resize_img.shape)
-            self.image_cv=resize_img.copy()
-            print(self.image_cv.shape)
-            result=pytesseract.image_to_osd(self.image_cv)
-        soup=BeautifulSoup(result)
-        text=soup.get_text()
-        tokens=text.split()
-        flag=False
-        for i in tokens:
-            if flag==True:
-                angle_rotation=int(i)
-                flag=False
-            if 'degrees' in i:
-                flag=True
-        angle_to_modify=0
-        if angle_rotation==270:
-            angle_to_modify=90
-        elif angle_rotation==180:
-            angle_to_modify=0
-        self.image=self.image.rotate(angle_to_modify,expand=True)
-        self.image.show()
-        return(angle_rotation)
+            self.image_cv = cv.resize(self.image_cv, dsize, interpolation=cv.INTER_CUBIC)
+            #result=pytesseract.image_to_osd(self.image_bin)
+        return(posible_analisis)
     def busca_fecha_nacimiento(self):
         fecha_nacimiento=''
         regex = re.compile('../../....')
@@ -430,7 +434,7 @@ def ocr_ife(media_image):
   miife=ife(pil_image)
   #miife.corrige_orientacion()
   #miife.lee_caracteres()
-  print(miife.result_bin)
+  #print(miife.result_bin)
   miife.datos_ife()
   #if len(miife.identidad['clave_elector'])>1:
     #app_tables.dbclientes.add_row(anio_registro=ano_registro,ciudad=ciudad,clave_elector=clave_elector,colonia=colonia,curp=curp,direccion=direccion,
