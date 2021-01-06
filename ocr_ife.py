@@ -16,6 +16,8 @@ import re
 import cv2 as cv
 import numpy
 from difflib import get_close_matches
+import math
+import imutils
 
 class ife():
     def __init__(self,image):
@@ -24,8 +26,9 @@ class ife():
         sharpened = cv.filter2D(self.image_cv, -1, kernel)
         self.image=image
         self.image_bin=self.binariza_imagen()
+        self.aplica_hough()
         self.identidad={}
-    
+        self.contador_exito=0
         if self.corrige_orientacion():
             self.result_gray=pytesseract.image_to_string(self.image)
             self.result_bin=pytesseract.image_to_string(self.image_bin)
@@ -51,6 +54,32 @@ class ife():
             self.identidad['vigencia']=self.busca_vigencia()
         else:
             self.identidad['nombre']='error'
+    def aplica_hough(self):
+        # se obtiene la orientacion de la mayor parte de las lineas, lo que determina la orientación de la credencial
+        img_bordes= cv.Canny(self.image_cv, 50, 200, None, 3)
+        cdst = cv.cvtColor(img_bordes, cv.COLOR_GRAY2BGR)
+        lines = cv.HoughLines(img_bordes, 1, numpy.pi / 180, 150, None, 0, 0)
+        conteo=numpy.zeros((180))
+        if lines is not None:
+            for i in range(0, len(lines)):
+                rho = lines[i][0][0]
+                theta = lines[i][0][1]
+                angle=int(theta*360/(2*numpy.pi))
+                conteo[int(angle)]+=1
+                a = math.cos(theta)
+                b = math.sin(theta)
+                x0 = a * rho
+                y0 = b * rho
+                pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
+                pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+                cv.line(cdst, pt1, pt2, (0,0,255), 3, cv.LINE_AA)
+            cv.imwrite('img_line.jpg',cdst)
+            print(conteo,max(conteo))
+            print(min(range(len(conteo)), key=conteo.__getitem__))
+            orientacion=min(range(len(conteo)), key=conteo.__getitem__)
+            self.image = self.image.rotate(90-orientacion)
+            self.image_cv= imutils.rotate_bound(self.image_cv, angle)
+            return orientacion
     def busca_registro(self):
         # se busca algo que suene similar por si falla el ocr
         # el año a veces viene en otro renglon, False
@@ -216,11 +245,15 @@ class ife():
                 else:
                     clave_elector=palabra
                 if self.identidad['fecha_nacimiento']=='':
-                    anio=int(palabra[4:6])
-                    if anio<=21:
-                        self.identidad['fecha_nacimiento']=palabra[8:10]+'/'+palabra[6:8]+'/20'+palabra[4:6]
-                    else:
-                        self.identidad['fecha_nacimiento']=palabra[8:10]+'/'+palabra[6:8]+'/19'+palabra[4:6]
+                    try:
+                        anio=int(palabra[4:6])
+                        if anio<=21:
+                            self.identidad['fecha_nacimiento']=palabra[8:10]+'/'+palabra[6:8]+'/20'+palabra[4:6]
+                        else:
+                            self.identidad['fecha_nacimiento']=palabra[8:10]+'/'+palabra[6:8]+'/19'+palabra[4:6]
+                        self.contador_exito+=1
+                    except:
+                        pass
                 
         return curp,clave_elector
     def busca_clave_elector(self):
